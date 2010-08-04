@@ -93,7 +93,10 @@ class Chef
           puts "-" * 20
         end
         
-        puts "Creating from baseline image..."
+        puts "Creating with the following defaults:"
+        puts "#{h.color("Baseline", :cyan)}: #{Chef::Config[:xenserver][:defaults][:image]}"
+        puts "#{h.color("Network", :cyan)} : #{Chef::Config[:xenserver][:defaults][:network]}"
+        puts "Cloning from baseline image..."
         mac_address = xenserver.create_server(config[:server_name])
         
         if Chef::Config[:xenserver][:waitress_host]
