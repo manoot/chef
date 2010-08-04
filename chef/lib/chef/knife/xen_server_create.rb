@@ -80,7 +80,7 @@ class Chef
           config[:scaffold] ||= {}
           config[:scaffold][:hostname]   ||= ask("Hostname? ") {|q| q.default = config[:server_name]; q.validate = /^[A-Za-z\d\-]+$/}
           config[:scaffold][:fqdn]       ||= ask("Domain? ") {|q| q.validate = /^.*.colo.(ign|fim)ops.com/}
-          config[:scaffold][:dataenter]  ||= ask("Datacenter? ") {|q| q.default = config[:scaffold][:fqdn].split('.').first}
+          config[:scaffold][:datacenter] ||= ask("Datacenter? ") {|q| q.default = config[:scaffold][:fqdn].split('.').first}
           config[:scaffold][:ip_address] ||= ask("IP Address? ") {|q| q.validate = /^([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])$/}
           config[:scaffold][:netmask]    ||= ask("Netmask? ") {|q| q.default = "255.255.255.0"}
           config[:scaffold][:gateway]    ||= ask("Gateway? ") {|q| q.default = config[:scaffold][:ip_address].split('.')[0..2].push('1').join('.')}
@@ -90,24 +90,30 @@ class Chef
           filename = [config[:scaffold][:hostname], config[:scaffold][:datacenter], 'json'].join('.')
           puts "Writing configuration to file: #{h.color(filename, :bold)}"
           File.open(filename, 'w') {|f| f.write( order.to_json )}
+          puts "-" * 20
         end
         
-        puts "-" * 20
         puts "Creating from baseline image..."
-        server = xenserver.create_server(config[:server_name])
+        mac_address = xenserver.create_server(config[:server_name])
         
-        server.start
+        if Chef::Config[:xenserver][:waitress_host]
+          puts "Placing order with waitress..."
+          %x{curl -s -d 'mac_address=#{mac_address}&node=#{order.to_json}' http://#{Chef::Config[:xenserver][:waitress_host]}}
+        end
+        
+        print "Server starting up..."
         $stdout.sync = true
         
         loop do
-          sleep 15
-          server.reload
+          server = xenserver.get_vm(config[:server_name])
+          print '.'
           if server[:power_state] == 'Running'
             break
           end
+          sleep 5
         end
         
-        puts "Server #{h.color("Online", :green)}"
+        puts "\nServer #{h.color("Online", :green)}"
       
       end
     end

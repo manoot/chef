@@ -63,12 +63,13 @@ class Chef
         
         $stdout.sync = true
         
-        server_list = [ h.color('MAC', :bold), h.color('Name', :bold) ]
+        server_list = [ h.color('Name', :bold), h.color('State', :bold), h.color('MAC', :bold) ]
         xenserver.servers.all.each do |server|
+          server_list << server.name.to_s
+          server_list << server.power_state.to_s
           server_list << server.mac_address
-          server_list << server.name_label.to_s
         end
-        puts h.list(server_list, :columns_across, 2)
+        puts h.list(server_list, :columns_across, 3)
         
       end
     end
