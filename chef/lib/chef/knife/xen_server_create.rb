@@ -22,7 +22,7 @@ require 'json'
 class Chef
   class Knife
     class XenServerCreate < Knife
-
+      
       banner "knife xen server create [RUN LIST...] (options)"
       
       option :server_name,
@@ -34,7 +34,7 @@ class Chef
         :short => "-h HYPERVISOR",
         :long => "--home-hypervisor HYPERVISOR",
         :description => "The name of the hypervisor to start the new server on"
-
+        
       option :xenserver_password,
         :short => "-K PASSWORD",
         :long => "--xenserver-password PASSWORD",
@@ -52,11 +52,11 @@ class Chef
         :long => "--xenserver-pool-master HOST",
         :description => "Your xenserver pool master hostname",
         :proc => Proc.new { |pool_master| Chef::Config[:knife][:xenserver_pool_master] = pool_master } 
-
+        
       def h
         @highline ||= HighLine.new
       end
-
+      
       def run 
         require 'fog'
         require 'highline'
@@ -64,7 +64,7 @@ class Chef
         require 'net/ssh/multi'
         require 'readline'
         require 'ruby-debug'
-
+        
         xenserver = Fog::Xenserver.new(
           :xenserver_username    => Chef::Config[:xenserver][:username],
           :xenserver_password    => Chef::Config[:xenserver][:password],
@@ -73,39 +73,35 @@ class Chef
         )
         
         config[:server_name] ||= ask("Server Name? ")
-        config[:run_list]    ||= ["recipe[scaffold]"]
         
-        config[:scaffold] ||= {}
-        config[:scaffold][:hostname]   ||= ask("Hostname? ") {|q| q.default = config[:server_name]; q.validate = /^[A-Za-z\d\-]+$/}
-        config[:scaffold][:fqdn]       ||= ask("Domain? ") {|q| q.validate = /^.*.colo.(ign|fim)ops.com/}
-        config[:scaffold][:dataenter]  ||= ask("Datacenter? ") {|q| q.default = config[:scaffold][:fqdn].split('.').first}
-        config[:scaffold][:ip_address] ||= ask("IP Address? ") {|q| q.validate = /^([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])$/}
-        config[:scaffold][:netmask]    ||= ask("Netmask? ") {|q| q.default = "255.255.255.0"}
-        config[:scaffold][:gateway]    ||= ask("Gateway? ") {|q| q.default = config[:scaffold][:ip_address].split('.')[0..2].push('1').join('.')}
-        config[:scaffold][:net_device] ||= ask("Default Net Device? ") {|q| q.default = "eth0"}
-        
-        order    = {"scaffold" => config[:scaffold], "run_list" => config[:run_list]}
-        # filename = [config[:scaffold][:hostname], config[:scaffold][:datacenter], 'json'].join('.')
-        # print "\n#{h.color("Writing configurationto file: #{filename}", :white)}"
-        # File.open(filename, 'w') {|f| f.write( order.to_json )}
+        if Chef::Config[:xenserver][:use_scaffold]
+          config[:run_list]    ||= ["recipe[scaffold]"]
+          
+          config[:scaffold] ||= {}
+          config[:scaffold][:hostname]   ||= ask("Hostname? ") {|q| q.default = config[:server_name]; q.validate = /^[A-Za-z\d\-]+$/}
+          config[:scaffold][:fqdn]       ||= ask("Domain? ") {|q| q.validate = /^.*.colo.(ign|fim)ops.com/}
+          config[:scaffold][:dataenter]  ||= ask("Datacenter? ") {|q| q.default = config[:scaffold][:fqdn].split('.').first}
+          config[:scaffold][:ip_address] ||= ask("IP Address? ") {|q| q.validate = /^([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])$/}
+          config[:scaffold][:netmask]    ||= ask("Netmask? ") {|q| q.default = "255.255.255.0"}
+          config[:scaffold][:gateway]    ||= ask("Gateway? ") {|q| q.default = config[:scaffold][:ip_address].split('.')[0..2].push('1').join('.')}
+          config[:scaffold][:net_device] ||= ask("Default Net Device? ") {|q| q.default = "eth0"}
+          
+          order    = {"scaffold" => config[:scaffold], "run_list" => config[:run_list]}
+          filename = [config[:scaffold][:hostname], config[:scaffold][:datacenter], 'json'].join('.')
+          puts "Writing configuration to file: #{h.color(filename, :bold)}"
+          File.open(filename, 'w') {|f| f.write( order.to_json )}
+        end
         
         puts "-" * 20
         puts "Creating from baseline image..."
-        xenserver.create_server(config[:server_name])
-        server = xenserver.get_vm(config[:server_name])
-
-        # hypervisors = []
-        # xenservers.hypervisors.each {|hv| hypervisors << {:uuid => hv.uuid, :name => hv.name_label}}
-        # hypervisor.each_with_index {|hv, index| puts "[#{index}] #{hv[:name]}"}
-        # hv_id = ask("Home Hypervisor? ") {|q| q.validate = /\d+/}
-        # server.set_attributes(:home_hypervisor => hypervisors[ hv_id.to_i ][:name])
-        #server.start
+        server = xenserver.create_server(config[:server_name])
         
+        server.start
         $stdout.sync = true
         
         loop do
           sleep 15
-          server = xenserver.get_vm( config[:server_name] )
+          server.reload
           if server[:power_state] == 'Running'
             break
           end
